@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pijezometri - Prijava</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    
+    <style>
+        body {
+            height: 100vh;
+            background: #f5f5f5;
+            background-image: linear-gradient(120deg, #e0e0e0 0%, #f5f5f5 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+        }
+
+        .login-card {
+            width: 380px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+            border: none;
+        }
+
+        .card-header {
+            background: #3f51b5;
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+            border: none;
+        }
+
+        .card-header i {
+            font-size: 64px;
+            margin-bottom: 10px;
+        }
+
+        .card-header h2 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 300;
+        }
+
+        .card-body {
+            padding: 30px;
+        }
+
+        .form-control {
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 5px;
+        }
+
+        .login-button {
+            width: 100%;
+            height: 50px;
+            margin-top: 16px;
+            font-weight: 500;
+            border-radius: 8px;
+            background-color: #3f51b5;
+            border: none;
+            transition: background 0.2s;
+        }
+
+        .login-button:hover {
+            background-color: #303f9f;
+        }
+
+        .error-container {
+            color: #d32f2f;
+            background: #ffebee;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 20px;
+            display: none;
+            border: 1px solid #ffcdd2;
+        }
+
+        /* Shake animacija za pogrešku */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+        .shake { animation: shake 0.4s ease-in-out; }
+
+        .form-label {
+            font-weight: 500;
+            color: #666;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card login-card" id="loginCard">
+    <div class="card-header">
+        <i class="material-icons">water_drop</i>
+        <h2>ViO Sustav pijezometara </h2>
+    </div>
+
+    <div class="card-body">
+        <div id="errorBox" class="error-container"></div>
+        
+        <div class="mb-3">
+            <label class="form-label">Korisničko ime</label>
+            <input type="text" class="form-control" id="username" value="piezo-user" placeholder="Unesite korisničko ime">
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Lozinka</label>
+            <input type="password" class="form-control" id="password" placeholder="Unesite lozinku">
+        </div>
+
+        <button onclick="handleLogin()" id="loginBtn" class="btn btn-primary login-button d-flex align-items-center justify-content-center">
+            <span id="btnText">Prijavi se</span>
+            <div id="loader" class="spinner-border spinner-border-sm ms-2" role="status" style="display: none;"></div>
+        </button>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    async function handleLogin() {
+        const user = document.getElementById('username').value;
+        const pass = document.getElementById('password').value;
+        const errorBox = document.getElementById('errorBox');
+        const loader = document.getElementById('loader');
+        const card = document.getElementById('loginCard');
+        const btn = document.getElementById('loginBtn');
+        const btnText = document.getElementById('btnText');
+
+        // Resetiraj UI
+        errorBox.style.display = 'none';
+        card.classList.remove('shake');
+        
+        if (!user || !pass) {
+            showError("Molimo unesite podatke.");
+            return;
+        }
+
+        // Aktiviraj loading stanje
+        loader.style.display = 'inline-block';
+        btnText.innerText = 'Provjera...';
+        btn.disabled = true;
+
+        try {
+            // Koristimo tvoj originalni endpoint /api/login
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Spremi tokene
+                localStorage.setItem('at', data.access_token);
+                localStorage.setItem('rt', data.refresh_token);
+                // Preusmjeri
+                window.location.replace('/main.html');
+            } else {
+                showError(data.message || "Neispravno korisničko ime ili lozinka.");
+            }
+        } catch (err) {
+            showError("Greška u povezivanju sa serverom.");
+        } finally {
+            // Vrati UI u normalu
+            loader.style.display = 'none';
+            btnText.innerText = 'Prijavi se';
+            btn.disabled = false;
+        }
+    }
+
+    function showError(msg) {
+        const errorBox = document.getElementById('errorBox');
+        const card = document.getElementById('loginCard');
+        errorBox.innerText = msg;
+        errorBox.style.display = 'block';
+        card.classList.add('shake');
+    }
+
+    // Enter za prijavu
+    document.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleLogin();
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Piezometri Zagreb</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.113/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.113/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+   <style>
+    body, html, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    .cesium-viewer-bottom { display: none !important; }
+
+    /* Custom Material FAB u Bootstrap okruženju */
+    .fab-wrapper {
+        position: fixed; bottom: 24px; right: 24px;
+        display: flex; flex-direction: column-reverse; align-items: center; z-index: 1050;
+    }
+    .fab-main {
+        width: 64px; height: 64px; border-radius: 50%;
+        background: #0d6efd; color: white; border: none;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    .fab-mini-container {
+        display: none; flex-direction: column-reverse; align-items: center; margin-bottom: 15px;
+    }
+    .fab-wrapper.active .fab-mini-container { display: flex; }
+    
+    .btn-fab-mini {
+        width: 48px; height: 48px; border-radius: 50%; margin-bottom: 10px;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    /* Stil za tablicu u modalu */
+    .table-responsive { max-height: 60vh; overflow-y: auto; }
+    .table-hover tbody tr { cursor: pointer; }
+</style>
+</head>
+<body>
+
+   <div id="cesiumContainer"></div>
+
+<div class="fab-wrapper" id="fabMenu">
+    <button class="fab-main shadow-lg" onclick="toggleFab()">
+        <i class="material-icons" id="fabIcon">menu</i>
+    </button>
+    
+    <div class="fab-mini-container">
+        <button class="btn btn-light btn-fab-mini" onclick="openPiezoModal()" title="Popis">
+            <i class="material-icons text-primary">format_list_bulleted</i>
+        </button>
+        
+        <button class="btn btn-light btn-fab-mini" onclick="loadPiezometers()" title="Osvježi">
+            <i class="material-icons text-success">refresh</i>
+        </button>
+        
+        <button class="btn btn-danger btn-fab-mini" onclick="logout()" title="Odjava">
+            <i class="material-icons">logout</i>
+        </button>
+
+    </div>
+</div>
+
+<div class="modal fade" id="piezoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Popis Pijezometara</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group mb-3">
+                    <span class="input-group-text"><i class="material-icons">search</i></span>
+                    <input type="text" id="piezoSearch" class="form-control" placeholder="Pretraži po nazivu..." onkeyup="filterTable()">
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle" id="piezoTable">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Naziv uređaja</th>
+                                <th>Kod</th>
+                                <th>Nulta točka (m)</th>
+                                <th class="text-center">Akcije</th>
+                            </tr>
+                        </thead>
+                        <tbody id="piezoTableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- modal za unos jedne vrijednosti -->
+<div class="modal fade" id="entryModal" tabindex="-1" aria-labelledby="entryModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="entryModalLabel">Novi zapis</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="entryForm">
+                    <div class="mb-3">
+                        <label for="formMeterId" class="form-label">Uređaj</label>
+                        <input type="text" class="form-control" id="formMeterId" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="formKota" class="form-label">Kota</label>
+                        <input type="text" class="form-control" id="formKota" readonly>
+                    </div>
+                    <div class="mb-3">
+                    <label for="formValue" class="form-label fw-bold">Izmjerena dubina (m)</label>
+                    <input type="number" step="0.01" class="form-control" id="formValue" placeholder="npr. 2.45">
+                    <div id="valueHelp" class="form-text text-primary">
+                        <i class="material-icons" style="font-size: 14px; vertical-align: middle;">info</i> 
+                        Ovdje upisujete odmjeranje (dubinu) od kote poklopca do razine vode. 
+                        <strong>Vrijednost će se automatski oduzeti od kote.</strong>
+                    </div>
+                </div>
+                      <div class="mb-3">
+                        <label for="formCode" class="form-label">Oznaka koda</label>
+                        <input type="text" step="0.01" class="form-control" id="formCode">
+                    </div>
+                    <div class="mb-3">
+                        <label for="formTimestamp" class="form-label">Vrijeme</label>
+                        <input type="datetime-local" class="form-control" id="formTimestamp">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Odustani</button>
+                <button type="button" class="btn btn-primary" onclick="saveEntry()">Spremi</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- modal za obavijest -->
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 2000;">
+  
+  <div id="successToast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body">
+        <span class="material-icons align-middle me-2">check_circle</span> 
+        Zapis je uspješno spremljen!
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+
+  <div id="dangerToast" class="toast align-items-center text-white bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body">
+        <span class="material-icons align-middle me-2">error</span> 
+        Greška: <span id="errorToastMsg">Spremanje nije uspjelo.</span>
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+
+</div>
+
+<!-- modal za graf podataka -->
+<div class="modal fade" id="chartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="chartTitle">Prikaz razine vode</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="row g-2 mb-3 text-center">
+    <div class="col-4">
+        <div class="p-2 border rounded bg-light">
+            <small class="text-muted d-block">Minimalna</small>
+            <strong id="statMin" class="text-primary">-</strong> <small>m</small>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="p-2 border rounded bg-light">
+            <small class="text-muted d-block">Maksimalna</small>
+            <strong id="statMax" class="text-danger">-</strong> <small>m</small>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="p-2 border rounded bg-light">
+            <small class="text-muted d-block">Prosjek</small>
+            <strong id="statAvg" class="text-success">-</strong> <small>m</small>
+        </div>
+    </div>
+</div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <div class="btn-group shadow-sm" role="group">
+                        <button class="btn btn-outline-primary btn-sm" onclick="updateChartPeriod(1)">1D</button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="updateChartPeriod(3)">3D</button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="updateChartPeriod(7)">7D</button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="updateChartPeriod(30)">1M</button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="updateChartPeriod(365)">1G</button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="updateChartPeriod(730)">2G</button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="updateChartPeriod(1095)">3G</button>
+                        <button class="btn btn-outline-primary btn-sm active" onclick="updateChartPeriod(null)">SVI</button>
+                    </div>
+                    <div class="dropdown">
+                        <button class="btn btn-dark btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            <i class="material-icons align-middle" style="font-size:16px;">download</i> Izvoz
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="exportData('csv')">CSV format</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="exportData('json')">JSON format</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div style="position: relative; height:60vh; width:100%">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <script>
+        let viewer;
+        init();
+
+async function init() {
+    try {
+        // 1. Dohvat konfiguracije sa servera
+        const configRes = await fetch('/api/config');
+        const config = await configRes.json();
+        
+  
+        
+        if (!config.cesiumToken || config.cesiumToken.length < 10) {
+            console.error("KRITIČNO: Cesium Token nije ispravno dohvaćen!");
+            return;
+        }
+
+        // 2. Postavljanje tokena PRIJE svega ostalog
+        Cesium.Ion.defaultAccessToken = config.cesiumToken;
+
+        // 3. Inicijalizacija Viewera (Prvo bez terena da budemo sigurni da radi)
+        viewer = new Cesium.Viewer('cesiumContainer', {
+            terrainProvider: await Cesium.createWorldTerrainAsync(), // Sigurnija metoda
+            timeline: false,
+    animation: false,
+    baseLayerPicker: false,
+    geocoder: false,
+    homeButton: false,
+    fullscreenButton: false,
+    sceneModePicker: false,
+    infoBox: false,
+        showInfo: false,
+        navigationHelpButton: false
+        });
+
+
+
+        // 4. Provjera učitavanja (Zemlja)
+        console.log("Viewer inicijaliziran");
+        
+        // 5. Let prema Zagrebu
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(15.9819, 45.8150, 5000),
+            duration: 2
+        });
+
+        await mapPiezometers()
+                var globe = viewer.scene.globe;
+      //viewer.scene.globe.terrainExaggeration = 12.0;
+      //viewer.scene.globe.terrainExaggerationRelativeHeight = 110.0;
+
+      var position = Cesium.Cartographic.toCartesian(
+         
+        new Cesium.Cartographic.fromDegrees(15.9782206, 45.789675, 110)
+      );
+      var distance =30000; //definira se širina prikaza kvadrata, tako da se ne prikazuje cijela zemlja, ako je 0 onda nema ni zemlje
+      globe.clippingPlanes = new Cesium.ClippingPlaneCollection({
+        modelMatrix: Cesium.Transforms.eastNorthUpToFixedFrame(position),
+        planes: [
+          new Cesium.ClippingPlane(
+            new Cesium.Cartesian3(1.0, 0.0, 0.0),
+            distance
+          ),
+          new Cesium.ClippingPlane(
+            new Cesium.Cartesian3(-1.0, 0.0, 0.0),
+            distance
+          ),
+          new Cesium.ClippingPlane(
+            new Cesium.Cartesian3(0.0, 1.0, 0.0),
+            distance
+          ),
+          new Cesium.ClippingPlane(
+            new Cesium.Cartesian3(0.0, -1.0, 0.0),
+            distance
+          ),
+        ],
+        unionClippingRegions: true,
+        edgeWidth: 10,
+        edgeColor: Cesium.Color.SADDLEBROWN,
+        enabled: true,
+      });
+
+      viewer.scene.skyBox.destroy();
+      viewer.scene.skyBox = undefined;
+      viewer.scene.sun.destroy();
+      viewer.scene.sun = undefined;
+      viewer.scene.skyAtmosphere.destroy();
+      viewer.scene.skyAtmosphere = undefined;
+      viewer.scene.backgroundColor = Cesium.Color.GAINSBORO;
+        // Inicijalizacija handlera za klik
+const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+handler.setInputAction(function (click) {
+    const pickedObject = viewer.scene.pick(click.position);
+    if (Cesium.defined(pickedObject) && pickedObject.id) {
+        const entity = pickedObject.id;
+        
+        // Uzimamo sirovu vrijednost naziva
+        const rawName = entity.label.text || (entity.properties && entity.properties.device_name);
+        
+        if (rawName) {
+            // Šaljemo u funkciju - ona će se sad pobrinuti za ostalo
+            fetchDeviceData(rawName);
+        }
+    }
+}, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    } catch (error) {
+        console.error("Greška u init funkciji:", error);
+    }
+}
+
+
+
+
+// Definiranje EPSG:3765 projekcije za proj4
+proj4.defs("EPSG:3765","+proj=tmerc +lat_0=0 +lon_0=16.5 +k=0.9999 +x_0=500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
+let globalPiezoData = []; // Ovdje ćemo čuvati tvoj Array
+
+async function mapPiezometers() {
+    const url = 'https://gis.edc.hr/postgrest/piezometers';
+    
+    try {
+        const data = await secureFetch(url);
+        console.table(data); // Ovo će ispisati podatke u lijepoj tablici u konzoli
+        console.log(`Započeto kartiranje ${data.length} pijezometara...`);
+allPiezoData = data;
+window.globalPiezoData = data;
+        // Čišćenje starih točaka ako ih ima
+        viewer.entities.removeAll();
+
+        data.forEach(p => {
+            if (p.position && p.position.coordinates) {
+                const easting = p.position.coordinates[0]; // X (Easting)
+                const northing = p.position.coordinates[1]; // Y (Northing)
+
+                // KONVERZIJA: Iz EPSG:3765 u WGS84 (EPSG:4326)
+                // Proj4 vraća [longitude, latitude]
+                const [lon, lat] = proj4("EPSG:3765", "WGS84", [easting, northing]);
+
+                // DODAVANJE NA CESIUM MAPU
+                viewer.entities.add({
+                    id: `piezo_${p.meter_id}`,
+                    name: `Pijezometar: ${p.device_name.toUpperCase().trim()}`,
+                    position: Cesium.Cartesian3.fromDegrees(lon, lat),
+                    point: {
+                        pixelSize: 12,
+                        color: Cesium.Color.fromCssColorString('#3f51b5'),
+                        outlineColor: Cesium.Color.WHITE,
+                        outlineWidth: 2,
+                        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND
+                    },
+                    label: {
+                        text: p.device_name,
+                        font: '14px Roboto, sans-serif',
+                        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                        outlineWidth: 2,
+                        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                        pixelOffset: new Cesium.Cartesian2(0, -15),
+                        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND
+                    },
+                    description: `
+                        <div style="padding: 10px;">
+                            <strong>Kod:</strong> ${p.code}<br>
+                            <strong>Nulta točka:</strong> ${p.zero_level} mnm<br>
+                            <strong>Razdoblje:</strong> ${p.years}<br>
+                            <strong>Napomena:</strong> ${p.note || 'Nema'}<br>
+                        </div>
+                    `
+                });
+            }
+        });
+
+        // Opcionalno: Zumiraj na sve točke nakon učitavanja
+        viewer.zoomTo(viewer.entities);
+
+    } catch (error) {
+        console.error("Greška pri kartiranju:", error);
+    }
+}
+
+async function secureFetch(url) {
+    let token = localStorage.getItem('at');
+    
+    let response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    // Ako je token istekao (401), pokušaj refresh
+    if (response.status === 401) {
+        console.log("Access token istekao, pokušavam osvježiti...");
+        const rt = localStorage.getItem('rt');
+        
+        const refreshRes = await fetch('/api/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: rt })
+        });
+
+        const refreshData = await refreshRes.json();
+        
+        if (refreshData.success) {
+            localStorage.setItem('at', refreshData.access_token);
+            // Ponovi originalni zahtjev s novim tokenom
+            return secureFetch(url); 
+        } else {
+            // Ako ni refresh ne radi, odjavi korisnika
+            logout();
+            throw new Error("Sesija istekla.");
+        }
+    }
+
+    return response.json();
+}
+        function logout() {
+    // 1. Brišemo tokene iz memorije preglednika
+    localStorage.removeItem('at');
+    localStorage.setItem('rt', ''); // Čistimo i refresh token
+    localStorage.clear(); // Za svaki slučaj brišemo sve ostalo
+
+    // 2. Opcionalno: Možeš dodati kratki vizualni feedback
+    console.log("Korisnik odjavljen, preusmjeravam...");
+
+    // 3. Preusmjeravanje na login stranicu
+    window.location.replace('/login.html'); 
+    // Koristimo .replace umjesto .href kako se korisnik ne bi mogao 
+    // vratiti natrag tipkom "Back" u pregledniku.
+}
+
+
+
+// Inicijalizacija Bootstrap modala
+let piezoModal;
+document.addEventListener('DOMContentLoaded', () => {
+    // Inicijalizacija Bootstrap modala
+    const modalElement = document.getElementById('piezoModal');
+    if (modalElement) {
+        piezoModal = new bootstrap.Modal(modalElement);
+    }
+});
+
+// FUNKCIJA KOJA TI NEDOSTAJE
+function toggleFab() {
+    const wrapper = document.getElementById('fabMenu');
+    const icon = document.getElementById('fabIcon');
+    
+    const isActive = wrapper.classList.toggle('active');
+    
+    // Animacija ikone
+    if (isActive) {
+        icon.style.transform = 'rotate(90deg)';
+        setTimeout(() => { icon.innerText = 'close'; }, 100);
+    } else {
+        icon.style.transform = 'rotate(0deg)';
+        setTimeout(() => { icon.innerText = 'menu'; }, 100);
+    }
+}
+
+// Funkcija za otvaranje modala
+function openPiezoModal() {
+    toggleFab(); // Zatvori FAB menu pri otvaranju
+    if (allPiezoData.length > 0) {
+        renderTable(allPiezoData);
+        piezoModal.show();
+    } else {
+        alert("Podaci se još učitavaju ili nisu dostupni.");
+    }
+}
+
+// Renderiranje tablice s tvojim poljima
+function renderTable(data) {
+    const tbody = document.getElementById('piezoTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    data.forEach(p => {
+        const row = document.createElement('tr');
+        
+        row.innerHTML = `
+            <td class="fw-bold">${p.device_name}</td>
+            <td><span class="badge bg-secondary">${p.code}</span></td>
+            <td><span class="badge bg-secondary">${p.zero_level}</span></td>
+            <td class="text-center">
+                <div class="btn-group" role="group" onclick="event.stopPropagation();">
+                    <button class="btn btn-sm btn-outline-primary" onclick="zoomToPiezo(${p.meter_id})" title="Lociraj na mapi">
+                        <i class="material-icons" style="font-size: 18px;">my_location</i>
+                    </button>
+                    
+                    <button class="btn btn-sm btn-outline-success" onclick="openEntryForm(${p.meter_id},${p.code},${p.zero_level}, '${p.device_name}')" title="Dodaj ručni zapis">
+                        <i class="material-icons" style="font-size: 18px;">add_chart</i>
+                    </button>
+                    
+                    <button class="btn btn-sm btn-outline-dark" onclick="openCsvModal(${p.meter_id}, '${p.device_name}')" title="Upload CSV">
+                        <i class="material-icons" style="font-size: 18px;">upload_file</i>
+                    </button>
+                </div>
+            </td>
+        `;
+        // Dodavanje event listenera na cijeli red
+        row.addEventListener('click', () => {
+            fetchDeviceData(p.device_name);
+        });
+        tbody.appendChild(row);
+    });
+}
+
+let allPiezometers;
+async function fetchDeviceData(deviceNameInput, days = null) {
+    console.log(deviceNameInput)
+    // 1. Rješavamo problem s Cesium objektom - izvlačimo samo string
+    let cleanName = "";
+    if (typeof deviceNameInput === 'object' && deviceNameInput._value) {
+        cleanName = deviceNameInput._value.toUpperCase().trim();
+    } else {
+        cleanName = deviceNameInput.toString().toUpperCase().trim();
+    }
+
+    if (!cleanName) return;
+    currentDevice = cleanName;
+
+    // 2. Pronalazimo zero_level u globalnom nizu
+    // Provjeravamo postoji li niz da izbjegnemo "Cannot read properties of undefined"
+    let zeroLevel = "N/A";
+    if (window.globalPiezoData && Array.isArray(window.globalPiezoData)) {
+        const found = window.globalPiezoData.find(p => 
+            p.device_name && p.device_name.toUpperCase().trim() === cleanName
+        );
+        if (found && found.zero_level !== undefined) {
+            zeroLevel = found.zero_level;
+        }
+    }
+
+    // 3. Postavljamo naslov modala
+    const titleEl = document.getElementById('chartTitle');
+    if (titleEl) {
+        titleEl.innerText = `Povijest mjerenja: ${cleanName} | Kota: ${zeroLevel} m`;
+    }
+
+    // 4. Dohvat podataka iz tablice 'munda'
+    let url = `https://gis.edc.hr/postgrest/munda?attribute=eq.${encodeURIComponent(cleanName)}&order=record_date.asc`;
+    
+    if (days) {
+        const dateLimit = new Date();
+        dateLimit.setDate(dateLimit.getDate() - days);
+        url += `&record_date=gte.${dateLimit.toISOString()}`;
+    }
+
+    try {
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('at')}` }
+        });
+        const data = await response.json();
+
+        if (typeof updateStatistics === "function") updateStatistics(data);
+        if (typeof renderChart === "function") renderChart(data);
+
+        const modalEl = document.getElementById('chartModal');
+        if (modalEl) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+    } catch (err) {
+        console.error("Greška pri dohvatu mjerenja:", err);
+    }
+}
+
+let myChart = null; // Inicijalizacija na null
+function renderChart(data, zeroLevel) {
+    document.getElementById('historyChart').style.opacity = '1';
+    const canvas = document.getElementById('historyChart');
+    if (!canvas) {
+        console.error("Canvas element 'historyChart' nije pronađen!");
+        return;
+    }
+    const ctx = canvas.getContext('2d');
+    
+    // Priprema podataka
+    const labels = data.map(d => {
+        const date = new Date(d.record_date);
+        return date.toLocaleDateString('hr-HR') + ' ' + date.toLocaleTimeString('hr-HR', {hour: '2-digit', minute:'2-digit'});
+    });
+    const values = data.map(d => d.attribute_value);
+
+    // KLJUČNI DIO: Ako grafikon već postoji, uništi ga
+    if (myChart instanceof Chart) {
+        myChart.destroy();
+    }
+
+    // Kreiranje nove instance grafikona
+    myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Razina vode (m)',
+                data: values,
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.1,
+                pointRadius: 3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: false, title:{display:true,
+                    text:'Nadmorska visina'
+                } },
+                x: { ticks: { maxRotation: 45, minRotation: 45 } }
+            }
+        }
+    });
+}
+
+function exportData(format) {
+    if (lastLoadedData.length === 0) return alert("Nema podataka za izvoz.");
+    
+    let content, type, filename;
+    if (format === 'json') {
+        content = JSON.stringify(lastLoadedData, null, 2);
+        type = 'application/json';
+        filename = `${currentDevice}_izvoz.json`;
+    } else {
+        const headers = "munda_id,record_date,attribute,attribute_value\n";
+        const rows = lastLoadedData.map(d => `${d.munda_id},${d.record_date},${d.attribute},${d.attribute_value}`).join("\n");
+        content = headers + rows;
+        type = 'text/csv';
+        filename = `${currentDevice}_izvoz.csv`;
+    }
+
+    const blob = new Blob([content], { type: type });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+}
+
+async function updateChartPeriod(days) {
+    document.getElementById('historyChart').style.opacity = '0.3';
+    // 1. Vizualno označi aktivni gumb (opcionalno)
+    const buttons = document.querySelectorAll('.btn-group .btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+
+    // 2. Izračunaj datum "od" (today - days)
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - days);
+    
+    // PostgREST očekuje ISO format (YYYY-MM-DD...)
+    const isoDate = dateLimit.toISOString();
+
+    // 3. Složi URL s filterima: 
+    // eq. -> jednakost za naziv uređaja
+    // gte. -> veće ili jednako za datum
+    const url = `https://gis.edc.hr/postgrest/munda?attribute=eq.${encodeURIComponent(currentDevice)}&record_date=gte.${isoDate}&order=record_date.asc`;
+
+    console.log("Filtriram podatke:", url);
+
+    try {
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('at')}` }
+        });
+        const data = await response.json();
+
+        if (data.length === 0) {
+            alert(`Nema podataka za uređaj ${currentDevice} u zadnjih ${days} dana.`);
+            return;
+        }
+
+        lastLoadedData = data; // Ažuriraj podatke za Export
+        renderChart(data);    // Ponovno iscrtaj graf
+    } catch (err) {
+        console.error("Greška pri filtriranju:", err);
+    }
+}
+
+function updateStatistics(data) {
+    if (!data || data.length === 0) {
+        document.getElementById('statMin').innerText = "-";
+        document.getElementById('statMax').innerText = "-";
+        document.getElementById('statAvg').innerText = "-";
+        return;
+    }
+
+    // Izvlačimo samo brojčane vrijednosti
+    const values = data.map(d => d.attribute_value).filter(v => v !== null && !isNaN(v));
+
+    if (values.length === 0) return;
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+
+    // Prikaz na 2 decimale
+    document.getElementById('statMin').innerText = min.toFixed(2);
+    document.getElementById('statMax').innerText = max.toFixed(2);
+    document.getElementById('statAvg').innerText = avg.toFixed(2);
+}
+
+// Zumiranje
+function zoomToPiezo(id) {
+    const entity = viewer.entities.getById(`piezo_${id}`);
+    if (entity) {
+        const position = entity.position.getValue(viewer.clock.currentTime);
+        
+        // 1. Pokreni pulsiranje
+        pulseAtLocation(position);
+
+        // 2. Odleti do lokacije
+        viewer.flyTo(entity, {
+            offset: new Cesium.HeadingPitchRange(
+                Cesium.Math.toRadians(0), 
+                Cesium.Math.toRadians(-45), 
+                800 // Visina u metrima
+            ),
+            duration: 1.5 // Trajanje leta
+        });
+
+        // 3. Sakrij Bootstrap modal
+        if (piezoModal) {
+            piezoModal.hide();
+        }
+    }
+}
+// Bootstrap filter (Search)
+function filterTable() {
+    const value = document.getElementById('piezoSearch').value.toLowerCase();
+    const rows = document.querySelectorAll('#piezoTableBody tr');
+    rows.forEach(row => {
+        row.style.display = row.innerText.toLowerCase().includes(value) ? '' : 'none';
+    });
+}
+
+function pulseAtLocation(position) {
+    let startTime = Date.now();
+    let duration = 2000; // Puls traje 2 sekunde
+
+    const pulseEntity = viewer.entities.add({
+        position: position,
+        ellipse: {
+            semiMinorAxis: new Cesium.CallbackProperty((time) => {
+                let diff = Date.now() - startTime;
+                return (diff / duration) * 100; // Širi se do 100 metara
+            }, false),
+            semiMajorAxis: new Cesium.CallbackProperty((time) => {
+                let diff = Date.now() - startTime;
+                return (diff / duration) * 100;
+            }, false),
+            material: new Cesium.ColorMaterialProperty(new Cesium.CallbackProperty((time) => {
+                let diff = Date.now() - startTime;
+                let alpha = 1.0 - (diff / duration); // Postaje prozirnije
+                return Cesium.Color.fromCssColorString('#0d6efd').withAlpha(alpha);
+            }, false)),
+            height: 0,
+            outline: false,
+            heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND
+        }
+    });
+
+    // Ukloni puls nakon što završi animacija
+    setTimeout(() => {
+        viewer.entities.remove(pulseEntity);
+    }, duration);
+}
+
+// function openEntryForm(meterId, deviceName) {
+//     const piezoModalEl = document.getElementById('piezoModal');
+//     const piezoModalInst = bootstrap.Modal.getInstance(piezoModalEl);
+
+//     // 1. Prvo definiramo što će se dogoditi KADA SE PRVI MODAL POTPUNO ZATVORI
+//     piezoModalEl.addEventListener('hidden.bs.modal', function onHidden() {
+//         // Popunjavamo polja u entryModalu
+//         document.getElementById('formMeterId').value = "581";
+//         document.getElementById('formValue').value = '';
+        
+//         const now = new Date();
+//         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+//         document.getElementById('formTimestamp').value = now.toISOString().slice(0, 16);
+
+//         // Otvaramo drugi modal
+//         const entryModalInst = bootstrap.Modal.getOrCreateInstance(document.getElementById('entryModal'));
+//         entryModalInst.show();
+
+//         // Važno: Ukloni ovaj event listener da se ne okida svaki put kad zatvoriš popis
+//         piezoModalEl.removeEventListener('hidden.bs.modal', onHidden);
+//     }, { once: true });
+
+//     // 2. Tek sada zatvaramo prvi modal
+//     piezoModalInst.hide();
+// }
+
+function openCsvModal(meterId, deviceName) {
+    const piezoModalEl = document.getElementById('piezoModal');
+    const piezoModalInst = bootstrap.Modal.getInstance(piezoModalEl);
+
+    piezoModalEl.addEventListener('hidden.bs.modal', function onHidden() {
+        document.getElementById('csvDeviceName').innerText = deviceName;
+        // Ovdje spremi meterId u neki hidden input ili varijablu ako ti treba za upload
+        window.currentMeterIdForCsv = meterId; 
+
+        const csvModalInst = bootstrap.Modal.getOrCreateInstance(document.getElementById('csvModal'));
+        csvModalInst.show();
+
+        piezoModalEl.removeEventListener('hidden.bs.modal', onHidden);
+    }, { once: true });
+
+    piezoModalInst.hide();
+}
+
+
+window.openEntryForm = function(meterId, deviceName, kota, kod) {
+    const piezoModalEl = document.getElementById('piezoModal');
+    const piezoModalInst = bootstrap.Modal.getInstance(piezoModalEl);
+
+    piezoModalEl.addEventListener('hidden.bs.modal', function onHidden() {
+        // Pronađi elemente
+        const meterInput = document.getElementById('formMeterId');
+        const timeInput = document.getElementById('formTimestamp');
+        const valueInput = document.getElementById('formValue');
+        const formKota = document.getElementById('formKota');
+        const formCode = document.getElementById('formCode');
+
+        // PROVJERA: Ako elementi postoje, postavi vrijednosti
+        if (meterInput && timeInput && valueInput && formKota && formCode) {
+            meterInput.value = `${deviceName} (ID: ${meterId})`;
+            valueInput.value = '';
+            formKota.value=`${kota}`
+            formCode.value=`${kod}`
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            timeInput.value = now.toISOString().slice(0, 16);
+
+            const entryModalInst = bootstrap.Modal.getOrCreateInstance(document.getElementById('entryModal'));
+            entryModalInst.show();
+        } else {
+            console.error("Greška: Nisu pronađena polja unutar entryModal-a! Provjeri HTML ID-ove.");
+        }
+
+        piezoModalEl.removeEventListener('hidden.bs.modal', onHidden);
+    }, { once: true });
+
+    piezoModalInst.hide();
+};
+
+async function saveEntry() {
+    const meterIdInput = document.getElementById('formMeterId');
+    const valueInput = document.getElementById('formValue');
+    const timestampInput = document.getElementById('formTimestamp');
+    const formCode = document.getElementById('formCode');
+    const formKota = document.getElementById('formKota');
+
+
+    const rawValue = valueInput.value;
+    const rawDate = timestampInput.value;
+    const meterIdString = meterIdInput.value;
+    const rawCode=formCode.value;
+    const rawKota=formKota.value;
+
+    if (!rawValue || !rawDate) {
+        alert("Molimo unesite vrijednost i datum.");
+        return;
+    }
+
+    // 1. Čišćenje imena (Osiguraj da je točno kao u bazi)
+    const deviceName = meterIdString.split(' (ID:')[0].trim();
+    const velikoIme = rawCode.toUpperCase();
+console.log(deviceName)
+    // 2. Formatiranje datuma u ISO string
+    let formattedDate;
+    try {
+        formattedDate = new Date(rawDate).toISOString();
+    } catch (e) {
+        alert("Neispravan format datuma.");
+        return;
+    }
+
+    const payload = {
+        "record_date": formattedDate,
+        "attribute": velikoIme,
+        "attribute_value": rawKota-parseFloat(rawValue)
+    };
+
+    const token = localStorage.getItem('at'); 
+    if (!token) {
+        alert("Greška: Niste prijavljeni (Token fali).");
+        return;
+    }
+
+try {
+        const response = await fetch('https://gis.edc.hr/postgrest/munda', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            // Zatvori modal
+            bootstrap.Modal.getInstance(document.getElementById('entryModal')).hide();
+            
+            // Prikaži ZELENI toast
+            const toast = new bootstrap.Toast(document.getElementById('successToast'), { delay: 3000 });
+            toast.show();
+            
+            // Očisti polja
+            valueInput.value = '';
+        } else {
+            const errData = await response.json();
+            
+            // Prikaži CRVENI toast s porukom s servera
+            document.getElementById('errorToastMsg').innerText = errData.message || "Provjerite unos.";
+            const toast = new bootstrap.Toast(document.getElementById('dangerToast'), { delay: 5000 });
+            toast.show();
+        }
+    } catch (error) {
+        console.error("Fetch error:", error);
+        
+        // Prikaži CRVENI toast za mrežnu grešku
+        document.getElementById('errorToastMsg').innerText = "Greška u povezivanju sa serverom.";
+        const toast = new bootstrap.Toast(document.getElementById('dangerToast'), { delay: 5000 });
+        toast.show();
+    }
+}
+
+
+
+    </script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+
+</body>
+</html>
