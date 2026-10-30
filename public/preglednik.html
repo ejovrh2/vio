@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f4fd8">
+<title>Preglednik pijezometara</title>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+:root {
+    --accent: #1f4fd8; --accent-soft: #e8eefc; --ink: #1b2230; --muted: #5f6b7a; --line: #e3e7ee;
+    --bg: #ffffff; --bg-app: #f3f5f9; --bg-soft: #f5f7fa; --danger: #c92a2a; --warn-bg: #fff4e0; --warn-ink: #8a4b00;
+    --radius: 14px; --shadow: 0 1px 3px rgba(16,24,40,.08), 0 1px 2px rgba(16,24,40,.04);
+    --side-w: 300px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font-family: 'Roboto', system-ui, sans-serif; color: var(--ink); background: var(--bg-app); font-size: 14px; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; }
+[hidden] { display: none !important; }
+.material-icons-round { font-size: 20px; line-height: 1; vertical-align: middle; user-select: none; }
+
+/* ---------- raspored ---------- */
+.app { display: grid; grid-template-columns: var(--side-w) 1fr; grid-template-rows: auto 1fr; height: 100vh; height: 100dvh; }
+.topbar {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 10px 18px; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 2;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; margin-right: auto; white-space: nowrap; }
+.brand .logo { width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; }
+.side { background: var(--bg); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.main { overflow-y: auto; padding: 18px; min-width: 0; }
+
+/* ---------- kontrole ---------- */
+.seg { display: inline-flex; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: none; padding: 6px 12px; border-radius: 8px; font-weight: 500; color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.seg button.on { background: #fff; color: var(--accent); box-shadow: var(--shadow); }
+.seg .material-icons-round { font-size: 18px; }
+.ctrl { display: flex; align-items: center; gap: 8px; }
+.ctrl label { font-size: 12px; color: var(--muted); font-weight: 500; }
+.btn { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font-weight: 500; white-space: nowrap; text-decoration: none; color: var(--ink); }
+.btn:hover { background: var(--bg-soft); }
+.btn:disabled { opacity: .5; cursor: default; }
+.icon-btn { width: 36px; height: 36px; border-radius: 10px; border: 0; background: none; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.icon-btn:hover { background: var(--bg-soft); color: var(--ink); }
+.input { width: 100%; min-height: 38px; padding: 7px 12px 7px 36px; border-radius: 10px; border: 1px solid #cfd6e0; font: inherit; }
+.input:focus { outline: 2px solid rgba(31,79,216,.35); border-color: var(--accent); }
+.search { position: relative; }
+.search .material-icons-round { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+
+/* ---------- bočni popis ---------- */
+.side-head { padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
+.side-head h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
+.sel-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.sel-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 4px 4px 8px; border-radius: 999px; background: var(--bg-soft); border: 1px solid var(--line); font-weight: 500; font-size: 13px; }
+.sel-chip button { border: 0; background: none; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); padding: 0; }
+.sel-chip button:hover { background: #e2e6ee; }
+.sel-chip .material-icons-round { font-size: 16px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.list { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; }
+.item { display: flex; align-items: center; gap: 10px; padding: 8px 8px; border-radius: 8px; cursor: pointer; }
+.item:hover { background: var(--bg-soft); }
+.item input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; flex: none; }
+.item .nm { font-weight: 600; }
+.item .sb { font-size: 12px; color: var(--muted); }
+.item.disabled { opacity: .45; cursor: default; }
+.warn-ic { color: #f08c00; font-size: 16px !important; }
+.linkish { border: 0; background: none; color: var(--accent); font-weight: 500; font-size: 12px; padding: 0; text-transform: none; letter-spacing: 0; }
+
+/* ---------- kartice ---------- */
+.card { background: var(--bg); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--line); }
+.card-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 6px; }
+.card-head h3 { margin: 0; font-size: 15px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-head .meta { font-size: 12px; color: var(--muted); white-space: nowrap; }
+#cmpChart { height: min(58vh, 560px); min-height: 340px; }
+.stats-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.stats-table th { text-align: right; font-weight: 500; color: var(--muted); font-size: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.stats-table th:first-child, .stats-table td:first-child { text-align: left; }
+.stats-table td { text-align: right; padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.stats-table tr:last-child td { border-bottom: 0; }
+.stats-table td small { color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; }
+.mini { height: 230px; }
+.mini-stats { display: flex; gap: 14px; padding: 0 16px 12px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.mini-stats b { color: var(--ink); font-weight: 600; }
+.callout { display: flex; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-ink); font-size: 13px; line-height: 1.45; margin-bottom: 14px; }
+.empty { text-align: center; color: var(--muted); padding: 80px 20px; }
+.empty .material-icons-round { font-size: 52px; color: #b8c1cf; display: block; margin: 0 auto 12px; }
+.empty h2 { color: var(--ink); font-size: 18px; margin: 0 0 6px; }
+.loading { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: #1b2230; color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 13px; z-index: 5; display: flex; gap: 8px; align-items: center; }
+.spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- tablet ---------- */
+@media (max-width: 1099.98px) {
+    :root { --side-w: 260px; }
+    .grid { grid-template-columns: 1fr; }
+    .topbar { gap: 10px; padding: 10px 12px; }
+    .brand span.full { display: none; }
+}
+
+/* ---------- mobitel: nije podržano ---------- */
+#mobileBlock { display: none; }
+@media (max-width: 767.98px) {
+    .app { display: none; }
+    #mobileBlock { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; height: 100vh; height: 100dvh; padding: 24px; }
+    #mobileBlock .material-icons-round { font-size: 56px; color: var(--accent); }
+    #mobileBlock h1 { font-size: 20px; margin: 0; }
+    #mobileBlock p { color: var(--muted); margin: 0 0 8px; max-width: 320px; line-height: 1.5; }
+}
+</style>
+</head>
+<body>
+
+<div id="mobileBlock">
+    <i class="material-icons-round">desktop_windows</i>
+    <h1>Preglednik je dostupan na tabletu i računalu</h1>
+    <p>Usporedba više pijezometara traži veći ekran. Na mobitelu koristite kartu i graf pojedinog pijezometra.</p>
+    <a class="btn" href="main.html"><i class="material-icons-round">map</i> Natrag na kartu</a>
+</div>
+
+<div class="app">
+    <header class="topbar">
+        <div class="brand"><span class="logo"><i class="material-icons-round">query_stats</i></span><span>Preglednik<span class="full"> pijezometara</span></span></div>
+
+        <div class="ctrl">
+            <div class="seg" id="periodSeg">
+                <button data-months="1">1 mj.</button><button data-months="6">6 mj.</button><button data-months="12">1 god.</button>
+                <button data-months="36">3 god.</button><button data-months="60">5 god.</button><button data-months="0" class="on">Sve</button>
+            </div>
+        </div>
+        <div class="ctrl">
+            <div class="seg" id="modeSeg">
+                <button data-mode="cmp" class="on" title="Svi odabrani na jednom grafu"><i class="material-icons-round">stacked_line_chart</i>Usporedba</button>
+                <button data-mode="grid" title="Zaseban graf za svaki pijezometar"><i class="material-icons-round">grid_view</i>Pojedinačno</button>
+            </div>
+        </div>
+        <div class="ctrl">
+            <div class="seg" id="measureSeg">
+                <button data-m="level" class="on" title="Razina podzemne vode, m n.m.">Razina</button>
+                <button data-m="depth" title="Dubina do vode od kote poklopca, m">Dubina</button>
+                <button data-m="dev" title="Razlika od prosjeka pijezometra; usporedba oblika krivulja">Odstupanje</button>
+            </div>
+        </div>
+        <button class="btn" id="csvBtn" onclick="exportVisible()" disabled title="Preuzmi prikazano razdoblje za odabrane pijezometre"><i class="material-icons-round">download</i>CSV</button>
+        <a class="icon-btn" href="main.html" title="Karta" aria-label="Karta"><i class="material-icons-round">map</i></a>
+        <button class="icon-btn" onclick="logout()" title="Odjava" aria-label="Odjava"><i class="material-icons-round">logout</i></button>
+    </header>
+
+    <aside class="side">
+        <div class="side-head">
+            <h2><span>Pijezometri <span id="selCount">(0/10)</span></span><button class="linkish" onclick="clearSel()">Poništi</button></h2>
+            <div class="search"><i class="material-icons-round">search</i><input type="search" class="input" id="q" placeholder="Naziv ili kod…" oninput="renderList()"></div>
+            <div class="sel-chips" id="selChips"></div>
+        </div>
+        <ul class="list" id="list"></ul>
+    </aside>
+
+    <main class="main" id="main">
+        <div class="callout" id="dupWarn" hidden><i class="material-icons-round">warning</i><span id="dupText"></span></div>
+
+        <div class="empty" id="empty">
+            <i class="material-icons-round">ssid_chart</i>
+            <h2>Odaberite pijezometre</h2>
+            <div>Označite jedan ili više pijezometara u popisu lijevo (najviše 10).<br>Uz dva ili više pijezometara grafovi se mogu uspoređivati.</div>
+        </div>
+
+        <section id="cmpView" hidden>
+            <div class="card" style="margin-bottom:14px">
+                <div class="card-head"><h3 id="cmpTitle">Usporedba</h3><span class="meta" id="cmpMeta"></span></div>
+                <div id="cmpChart"></div>
+            </div>
+            <div class="card" style="overflow-x:auto">
+                <table class="stats-table" id="statsTable"></table>
+            </div>
+        </section>
+
+        <section id="gridView" hidden>
+            <div class="grid" id="grid"></div>
+        </section>
+    </main>
+</div>
+<div class="loading" id="loading" hidden><span class="spinner"></span><span id="loadingText">Učitavanje…</span></div>
+
+<script>
+// =====================================================================
+//  OSNOVNO
+// =====================================================================
+const API_BASE = 'https://gis.edc.hr/postgrest';
+const MAX_SEL = 10;
+const PALETTE = ['#1f4fd8', '#e8590c', '#2b8a3e', '#c2255c', '#7048e8', '#0c8599', '#e67700', '#5c940d', '#862e9c', '#495057'];
+const MEASURES = {
+    level: { label: 'Razina vode', unit: 'm n.m.', axis: 'Razina (m n.m.)' },
+    depth: { label: 'Dubina do vode', unit: 'm', axis: 'Dubina (m)', inverse: true },
+    dev:   { label: 'Odstupanje od prosjeka', unit: 'm', axis: 'Odstupanje (m)' },
+};
+if (!localStorage.getItem('at')) window.location.replace('login.html');
+
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+function h(tag, props, ...kids) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(props || {})) {
+        if (v === null || v === undefined || v === false) continue;
+        if (k === 'class') e.className = v;
+        else if (k === 'style') e.style.cssText = v;
+        else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2), v);
+        else e.setAttribute(k, v === true ? '' : v);
+    }
+    kids.flat().forEach(c => { if (c !== null && c !== undefined && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c))); });
+    return e;
+}
+const icon = n => h('i', { class: 'material-icons-round' }, n);
+const pad = n => String(n).padStart(2, '0');
+const fmtDate = d => { d = new Date(d); return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}.`; };
+const fmtDateTime = d => { d = new Date(d); return `${fmtDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const localIso = d => { d = new Date(d); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const nf = (v, dec = 2) => (v === null || v === undefined || isNaN(v)) ? '–' : v.toLocaleString('hr-HR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+const sensorOf = p => p.device_name.trim().toLowerCase();
+const isNoData = v => v === null || v === undefined || isNaN(v) || v <= 0;
+function fmtYears(y) {
+    const m = /^[\[(](\d*),(\d*)[\])]$/.exec(y || ''); if (!m) return '–';
+    const to = m[2] ? (y.endsWith(')') ? Number(m[2]) - 1 : Number(m[2])) : '';
+    return to ? `${m[1]}–${to}` : `od ${m[1]}`;
+}
+function logout() { localStorage.clear(); window.location.replace('login.html'); }
+
+// ---------- API (isti obrazac kao na karti: osvježavanje tokena na 401) ----------
+let refreshPromise = null;
+async function refreshAccessToken() {
+    if (!refreshPromise) {
+        refreshPromise = (async () => {
+            const res = await fetch('api/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: localStorage.getItem('rt') }) });
+            const d = await res.json().catch(() => ({}));
+            if (!d.success) return false;
+            localStorage.setItem('at', d.access_token);
+            if (d.refresh_token) localStorage.setItem('rt', d.refresh_token);
+            return true;
+        })().finally(() => setTimeout(() => { refreshPromise = null; }, 0));
+    }
+    return refreshPromise;
+}
+async function apiGet(url, retried = false) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('at')}` } });
+    if (res.status === 401 && !retried) {
+        if (await refreshAccessToken()) return apiGet(url, true);
+        logout(); throw new Error('Sesija je istekla.');
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+async function apiGetAll(url, pageSize = 20000) {
+    const out = [];
+    for (let offset = 0; ; ) {
+        const rows = await apiGet(`${url}&limit=${pageSize}&offset=${offset}`);
+        out.push(...rows);
+        if (rows.length === 0 || (rows.length < pageSize && rows.length % 1000 !== 0)) break;
+        offset += rows.length;
+    }
+    return out;
+}
+
+// =====================================================================
+//  STANJE (spremljeno u adresi i u pregledniku)
+// =====================================================================
+const S = { piezos: [], byId: new Map(), sel: [], colors: new Map(), mode: 'cmp', measure: 'level', months: 0, cache: new Map(), zoom: null };
+
+function readState() {
+    const u = new URLSearchParams(location.search);
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem('preglednik') || '{}'); } catch (e) {}
+    const ids = (u.get('p') || '').split(',').map(Number).filter(Boolean);
+    S.sel = ids.length ? ids : (saved.sel || []);
+    S.mode = u.get('mode') || saved.mode || 'cmp';
+    S.measure = u.get('m') || saved.measure || 'level';
+    S.months = Number(u.get('t') ?? saved.months ?? 0) || 0;
+}
+function writeState() {
+    const u = new URLSearchParams();
+    if (S.sel.length) u.set('p', S.sel.join(','));
+    if (S.mode !== 'cmp') u.set('mode', S.mode);
+    if (S.measure !== 'level') u.set('m', S.measure);
+    if (S.months) u.set('t', S.months);
+    history.replaceState(null, '', `${location.pathname}${u.toString() ? '?' + u : ''}`);
+    try { localStorage.setItem('preglednik', JSON.stringify({ sel: S.sel, mode: S.mode, measure: S.measure, months: S.months })); } catch (e) {}
+}
+function assignColors() {
+    // boja ostaje uz pijezometar dok je odabran
+    const used = new Set(S.sel.map(id => S.colors.get(id)).filter(Boolean));
+    [...S.colors.keys()].forEach(id => { if (!S.sel.includes(id)) S.colors.delete(id); });
+    S.sel.forEach(id => {
+        if (S.colors.has(id)) return;
+        const c = PALETTE.find(c => !used.has(c)) || PALETTE[0];
+        S.colors.set(id, c); used.add(c);
+    });
+}
+
+// =====================================================================
+//  POPIS PIJEZOMETARA
+// =====================================================================
+async function init() {
+    readState();
+    $$('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === S.mode));
+    $$('#measureSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === S.measure));
+    $$('#periodSeg button').forEach(b => b.classList.toggle('on', Number(b.dataset.months) === S.months));
+    showLoading('Učitavanje pijezometara…');
+    try {
+        const data = await apiGet(`${API_BASE}/piezometers?select=meter_id,code,device_name,zero_level,years,note&order=device_name.asc`);
+        const bySensor = {};
+        data.forEach(p => { p.sensor = sensorOf(p); (bySensor[p.sensor] = bySensor[p.sensor] || []).push(p.meter_id); S.byId.set(p.meter_id, p); });
+        data.forEach(p => { p.dupWith = bySensor[p.sensor].filter(id => id !== p.meter_id); });
+        data.sort((a, b) => a.device_name.localeCompare(b.device_name, 'hr', { numeric: true }));
+        S.piezos = data;
+        S.sel = S.sel.filter(id => S.byId.has(id)).slice(0, MAX_SEL);
+    } catch (e) {
+        console.error(e); alert('Pijezometri se nisu mogli učitati.');
+    } finally { hideLoading(); }
+    assignColors();
+    renderList();
+    await refresh();
+}
+
+function renderList() {
+    const q = $('#q').value.toLowerCase().trim();
+    const full = S.sel.length >= MAX_SEL;
+    const items = S.piezos.filter(p => !q || p.device_name.toLowerCase().includes(q) || String(p.code).includes(q));
+    $('#list').replaceChildren(...items.map(p => {
+        const on = S.sel.includes(p.meter_id);
+        const cb = h('input', { type: 'checkbox', 'aria-label': p.device_name });
+        cb.checked = on;
+        cb.disabled = !on && full;
+        return h('li', { class: `item${!on && full ? ' disabled' : ''}`, onclick: e => { if (e.target !== cb) e.preventDefault(); if (!cb.disabled) toggle(p.meter_id); } },
+            cb,
+            on ? h('span', { class: 'dot', style: `background:${S.colors.get(p.meter_id)}` }) : null,
+            h('div', { style: 'min-width:0' },
+                h('div', { class: 'nm' }, p.device_name, ' ', p.dupWith.length ? h('i', { class: 'material-icons-round warn-ic', title: 'Isti naziv ima još jedan pijezometar' }, 'warning') : null),
+                h('div', { class: 'sb' }, `kod ${p.code} · ${fmtYears(p.years)}`)));
+    }));
+    $('#selCount').textContent = `(${S.sel.length}/${MAX_SEL})`;
+    $('#selChips').replaceChildren(...S.sel.map(id => {
+        const p = S.byId.get(id);
+        return h('span', { class: 'sel-chip' }, h('span', { class: 'dot', style: `background:${S.colors.get(id)}` }), p.device_name,
+            h('button', { title: 'Ukloni', 'aria-label': `Ukloni ${p.device_name}`, onclick: () => toggle(id) }, icon('close')));
+    }));
+}
+function toggle(id) {
+    if (S.sel.includes(id)) S.sel = S.sel.filter(x => x !== id);
+    else if (S.sel.length < MAX_SEL) S.sel.push(id);
+    assignColors(); renderList(); writeState(); refresh();
+}
+function clearSel() { S.sel = []; assignColors(); renderList(); writeState(); refresh(); }
+
+// =====================================================================
+//  PODACI
+// =====================================================================
+/** Mjerenja jednog senzora: bez oznaka nedostajuće vrijednosti, jedan zapis po vremenu (noviji). */
+async function loadSeries(p) {
+    if (S.cache.has(p.sensor)) return S.cache.get(p.sensor);
+    const rows = await apiGetAll(`${API_BASE}/telemetry?select=telemetry_id,record_date,record_value&sensor_id=eq.${encodeURIComponent(p.sensor)}&order=record_date.asc`);
+    const keep = new Map();
+    rows.forEach(r => {
+        if (!r.record_date || isNoData(r.record_value)) return;
+        const t = Date.parse(r.record_date), prev = keep.get(t);
+        if (!prev || r.telemetry_id > prev.telemetry_id) keep.set(t, r);
+    });
+    const series = [...keep.entries()].sort((a, b) => a[0] - b[0]).map(([t, r]) => [t, r.record_value]);
+    S.cache.set(p.sensor, series);
+    return series;
+}
+/** Vrijednosti za odabranu veličinu. */
+function transform(p, series) {
+    const kota = Number(p.zero_level);
+    if (S.measure === 'depth') return isNaN(kota) ? [] : series.map(([t, v]) => [t, Math.round((kota - v) * 1000) / 1000]);
+    if (S.measure === 'dev') {
+        if (!series.length) return [];
+        const mean = series.reduce((s, d) => s + d[1], 0) / series.length;
+        return series.map(([t, v]) => [t, Math.round((v - mean) * 1000) / 1000]);
+    }
+    return series;
+}
+async function loadSelected() {
+    const need = S.sel.map(id => S.byId.get(id)).filter(p => !S.cache.has(p.sensor));
+    let done = 0;
+    if (need.length) showLoading(`Učitavanje mjerenja… 0/${need.length}`);
+    // najviše 3 istodobna zahtjeva
+    const queue = [...need];
+    await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
+        while (queue.length) {
+            const p = queue.shift();
+            try { await loadSeries(p); } catch (e) { console.error(e); S.cache.set(p.sensor, []); }
+            done++; showLoading(`Učitavanje mjerenja… ${done}/${need.length}`);
+        }
+    }));
+    hideLoading();
+}
+function showLoading(t) { $('#loadingText').textContent = t; $('#loading').hidden = false; }
+function hideLoading() { $('#loading').hidden = true; }
+
+// =====================================================================
+//  PRIKAZ
+// =====================================================================
+let cmpChart = null, miniCharts = [];
+/** Prekid crte gdje nema mjerenja dulje od uobičajenog (veći od 20 uobičajenih razmaka, najmanje 45 dana). */
+function withGaps(data) {
+    if (data.length < 3) return data;
+    const steps = [];
+    for (let i = 1; i < data.length; i++) steps.push(data[i][0] - data[i - 1][0]);
+    steps.sort((a, b) => a - b);
+    const limit = Math.max(steps[steps.length >> 1] * 20, 45 * 864e5);
+    const out = [data[0]];
+    for (let i = 1; i < data.length; i++) {
+        if (data[i][0] - data[i - 1][0] > limit) out.push([data[i - 1][0] + 1, null]);
+        out.push(data[i]);
+    }
+    return out;
+}
+/** Najbliže mjerenje u nizu (binarno pretraživanje), unutar zadane tolerancije. */
+function nearest(data, t, tol) {
+    let lo = 0, hi = data.length - 1;
+    if (hi < 0) return null;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (data[mid][0] < t) lo = mid + 1; else hi = mid; }
+    let best = null;
+    for (const i of [lo - 1, lo]) {
+        const d = data[i];
+        if (!d || d[1] === null) continue;
+        if (!best || Math.abs(d[0] - t) < Math.abs(best[0] - t)) best = d;
+    }
+    return best && Math.abs(best[0] - t) <= tol ? best : null;
+}
+function datasets() {
+    return S.sel.map(id => {
+        const p = S.byId.get(id);
+        return { p, color: S.colors.get(id), data: transform(p, S.cache.get(p.sensor) || []) };
+    });
+}
+function extent(ds) {
+    let lo = Infinity, hi = -Infinity;
+    ds.forEach(d => { if (d.data.length) { lo = Math.min(lo, d.data[0][0]); hi = Math.max(hi, d.data[d.data.length - 1][0]); } });
+    return lo === Infinity ? null : [lo, hi];
+}
+/** Početak razdoblja: N mjeseci prije zadnjeg mjerenja među odabranima. */
+function periodStart(ext) {
+    if (!S.months || !ext) return null;
+    const d = new Date(ext[1]); d.setMonth(d.getMonth() - S.months);
+    return Math.max(ext[0], d.getTime());
+}
+
+async function refresh() {
+    const has = S.sel.length > 0;
+    $('#empty').hidden = has;
+    $('#csvBtn').disabled = !has;
+    const dups = S.sel.map(id => S.byId.get(id)).filter(p => p.dupWith.some(o => S.sel.includes(o)));
+    $('#dupWarn').hidden = !dups.length;
+    $('#dupText').textContent = dups.length ? `Odabrani su pijezometri istog naziva (${[...new Set(dups.map(p => p.device_name))].join(', ')}). Mjerenja su u bazi vezana uz naziv, pa su im krivulje jednake.` : '';
+    if (!has) { $('#cmpView').hidden = true; $('#gridView').hidden = true; disposeMini(); if (cmpChart) cmpChart.clear(); return; }
+    await loadSelected();
+    $('#cmpView').hidden = S.mode !== 'cmp';
+    $('#gridView').hidden = S.mode !== 'grid';
+    if (S.mode === 'cmp') { disposeMini(); renderCompare(); } else renderGrid();
+}
+
+const tooltipBase = {
+    trigger: 'axis', confine: true, backgroundColor: 'rgba(27,34,48,.94)', borderWidth: 0,
+    textStyle: { color: '#fff', fontSize: 13 }, axisPointer: { type: 'line', lineStyle: { color: '#94a3b8' } }
+};
+const xAxisBase = {
+    type: 'time', axisLine: { lineStyle: { color: '#cbd5e1' } }, splitLine: { show: false },
+    axisLabel: { color: '#64748b', hideOverlap: true, formatter: { year: '{yyyy}', month: '{MM}/{yyyy}', day: '{dd}.{MM}.', hour: '{HH}:{mm}' } }
+};
+function yAxisBase(m) {
+    return { type: 'value', scale: true, inverse: !!m.inverse, name: m.axis, nameTextStyle: { color: '#64748b', align: 'left' },
+             axisLabel: { color: '#64748b', formatter: v => v.toLocaleString('hr-HR', { maximumFractionDigits: 2 }) }, splitLine: { lineStyle: { color: '#eef2f7' } } };
+}
+
+function renderCompare() {
+    const m = MEASURES[S.measure], ds = datasets(), ext = extent(ds);
+    $('#cmpTitle').textContent = ds.length > 1 ? `Usporedba: ${m.label.toLowerCase()}` : `${ds[0].p.device_name}: ${m.label.toLowerCase()}`;
+    $('#cmpMeta').textContent = ext ? `${fmtDate(ext[0])} – ${fmtDate(ext[1])}${m.inverse ? ' · os je okrenuta (dublje = niže)' : ''}` : 'nema mjerenja';
+    if (!cmpChart) {
+        cmpChart = echarts.init($('#cmpChart'));
+        new ResizeObserver(() => cmpChart.resize()).observe($('#cmpChart'));
+        cmpChart.on('datazoom', () => { markPeriod(null); renderStats(); });
+    }
+    const start = periodStart(ext);
+    cmpChart.setOption({
+        animation: false,
+        color: ds.map(d => d.color),
+        legend: { top: 4, left: 'center', icon: 'roundRect', itemWidth: 14, itemHeight: 4, textStyle: { color: '#1b2230' }, type: 'scroll' },
+        grid: { left: 64, right: 24, top: 44, bottom: 74 },
+        tooltip: { ...tooltipBase, formatter: list => {
+            if (!list.length) return '';
+            const t = list[0].axisValue;
+            const [from, to] = currentRange();
+            const tol = Math.max(36 * 3600e3, ((to || 0) - (from || 0)) / 300);
+            const items = ds.map(d => ({ d, pt: nearest(d.data, t, tol) })).filter(x => x.pt)
+                .sort((a, b) => (m.inverse ? a.pt[1] - b.pt[1] : b.pt[1] - a.pt[1]));
+            if (!items.length) return '';
+            const day = x => fmtDate(x);
+            return `<div style="opacity:.75;margin-bottom:4px">${fmtDateTime(t)}</div>` + items.map(({ d, pt }) =>
+                `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${d.color};margin-right:6px"></span>${d.p.device_name}: <b>${nf(pt[1])} ${m.unit}</b>${day(pt[0]) !== day(t) ? ` <span style="opacity:.6">(${day(pt[0])})</span>` : ''}</div>`).join('');
+        } },
+        xAxis: xAxisBase,
+        yAxis: yAxisBase(m),
+        dataZoom: [
+            { type: 'inside', throttle: 40, ...(start ? { startValue: start, endValue: ext[1] } : { start: 0, end: 100 }) },
+            { type: 'slider', height: 28, bottom: 14, borderColor: 'transparent', backgroundColor: '#f1f5f9', fillerColor: 'rgba(31,79,216,.15)',
+              dataBackground: { lineStyle: { color: '#94a3b8' }, areaStyle: { color: '#e2e8f0' } }, labelFormatter: v => fmtDate(v), textStyle: { color: '#64748b', fontSize: 11 },
+              ...(start ? { startValue: start, endValue: ext[1] } : { start: 0, end: 100 }) }
+        ],
+        series: ds.map(d => ({
+            type: 'line', name: d.p.device_name + (d.p.dupWith.length ? ` [${d.p.meter_id}]` : ''), data: withGaps(d.data),
+            showSymbol: d.data.length < 60, symbolSize: 5, sampling: 'lttb', lineStyle: { width: 1.8 }, emphasis: { focus: 'series' }
+        }))
+    }, true);
+    renderStats();
+}
+
+function currentRange() {
+    if (!cmpChart) return [null, null];
+    const ext = extent(datasets());
+    if (!ext) return [null, null];
+    const dz = cmpChart.getOption().dataZoom[0];
+    const from = dz.startValue !== undefined ? dz.startValue : ext[0] + (ext[1] - ext[0]) * dz.start / 100;
+    const to = dz.endValue !== undefined ? dz.endValue : ext[0] + (ext[1] - ext[0]) * dz.end / 100;
+    return [from, to];
+}
+function statsOf(data, from, to) {
+    let n = 0, sum = 0, mn = null, mx = null, last = null;
+    for (const d of data) {
+        if (d[1] === null) continue;
+        if (from !== null && (d[0] < from || d[0] > to)) continue;
+        n++; sum += d[1];
+        if (!mn || d[1] < mn[1]) mn = d; if (!mx || d[1] > mx[1]) mx = d; last = d;
+    }
+    return { n, mean: n ? sum / n : null, min: mn, max: mx, last };
+}
+function renderStats() {
+    const m = MEASURES[S.measure], [from, to] = currentRange();
+    const rows = datasets().map(d => ({ d, s: statsOf(d.data, from, to) }));
+    $('#statsTable').replaceChildren(
+        h('thead', {}, h('tr', {}, h('th', {}, 'Pijezometar'), h('th', {}, 'Zadnje u prikazu'), h('th', {}, 'Minimum'), h('th', {}, 'Maksimum'), h('th', {}, 'Prosjek'), h('th', {}, 'Raspon'), h('th', {}, 'Mjerenja'))),
+        h('tbody', {}, ...rows.map(({ d, s }) => h('tr', {},
+            h('td', {}, h('span', { style: 'display:inline-flex;align-items:center;gap:8px;font-weight:600' }, h('span', { class: 'dot', style: `background:${d.color}` }), d.p.device_name),
+                h('small', {}, `  kod ${d.p.code} · kota ${nf(d.p.zero_level)} m`)),
+            h('td', {}, s.last ? `${nf(s.last[1])}` : '–', s.last ? h('small', {}, ` ${fmtDate(s.last[0])}`) : null),
+            h('td', {}, s.min ? nf(s.min[1]) : '–', s.min ? h('small', {}, ` ${fmtDate(s.min[0])}`) : null),
+            h('td', {}, s.max ? nf(s.max[1]) : '–', s.max ? h('small', {}, ` ${fmtDate(s.max[0])}`) : null),
+            h('td', {}, nf(s.mean)),
+            h('td', {}, s.min ? nf(s.max[1] - s.min[1]) : '–'),
+            h('td', {}, s.n.toLocaleString('hr-HR')))))
+    );
+    $('#statsTable').append(h('caption', { style: 'caption-side:bottom;text-align:left;padding:8px 12px;color:#5f6b7a;font-size:12px' },
+        `${m.label} (${m.unit}) za prikazano razdoblje${from ? `: ${fmtDate(from)} – ${fmtDate(to)}` : ''}. Dvostruki zapisi i oznake nedostajuće vrijednosti su izostavljeni.`));
+}
+
+function disposeMini() { miniCharts.forEach(c => c.dispose()); miniCharts = []; }
+function renderGrid() {
+    disposeMini();
+    const m = MEASURES[S.measure], ds = datasets(), ext = extent(ds), start = periodStart(ext);
+    $('#grid').replaceChildren(...ds.map(d => {
+        const s = statsOf(d.data, start, ext ? ext[1] : null);
+        return h('div', { class: 'card' },
+            h('div', { class: 'card-head' }, h('span', { class: 'dot', style: `background:${d.color}` }), h('h3', {}, d.p.device_name),
+                h('span', { class: 'meta' }, `kod ${d.p.code} · kota ${nf(d.p.zero_level)} m`)),
+            h('div', { class: 'mini' }),
+            h('div', { class: 'mini-stats' },
+                h('span', {}, 'zadnje ', h('b', {}, s.last ? nf(s.last[1]) : '–')),
+                h('span', {}, 'min ', h('b', {}, s.min ? nf(s.min[1]) : '–')),
+                h('span', {}, 'maks ', h('b', {}, s.max ? nf(s.max[1]) : '–')),
+                h('span', {}, 'prosjek ', h('b', {}, nf(s.mean))),
+                h('span', {}, `${s.n.toLocaleString('hr-HR')} mjerenja · ${m.unit}`)));
+    }));
+    // isto zumiranje na svim malim grafovima
+    $$('#grid .mini').forEach((el, i) => {
+        const d = ds[i];
+        const c = echarts.init(el);
+        c.group = 'mreza';
+        c.setOption({
+            animation: false,
+            grid: { left: 52, right: 14, top: 10, bottom: 28 },
+            tooltip: { ...tooltipBase, formatter: l => l.length ? `<div style="opacity:.75">${fmtDateTime(l[0].value[0])}</div><b>${nf(l[0].value[1])} ${m.unit}</b>` : '' },
+            xAxis: { ...xAxisBase, min: ext ? ext[0] : null, max: ext ? ext[1] : null },
+            yAxis: { ...yAxisBase(m), name: '' },
+            dataZoom: [{ type: 'inside', throttle: 40, ...(start ? { startValue: start, endValue: ext[1] } : { start: 0, end: 100 }) }],
+            series: [{ type: 'line', data: withGaps(d.data), showSymbol: d.data.length < 60, symbolSize: 4, sampling: 'lttb', color: d.color, lineStyle: { width: 1.6 },
+                areaStyle: { origin: m.inverse ? 'end' : 'start', color: new echarts.graphic.LinearGradient(0, 0, 0, 1, m.inverse ? [{ offset: 0, color: d.color + '00' }, { offset: 1, color: d.color + '33' }] : [{ offset: 0, color: d.color + '33' }, { offset: 1, color: d.color + '00' }]) } }]
+        });
+        new ResizeObserver(() => c.resize()).observe(el);
+        miniCharts.push(c);
+    });
+    echarts.connect('mreza');
+}
+
+function markPeriod(months) { $$('#periodSeg button').forEach(b => b.classList.toggle('on', months !== null && Number(b.dataset.months) === months)); }
+
+// =====================================================================
+//  KONTROLE
+// =====================================================================
+$('#periodSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S.months = Number(b.dataset.months);
+    writeState();
+    const ext = extent(datasets()), start = periodStart(ext);
+    const zoom = start ? { startValue: start, endValue: ext[1] } : { start: 0, end: 100 };
+    if (S.mode === 'cmp' && cmpChart) { cmpChart.dispatchAction({ type: 'dataZoom', ...zoom }); renderStats(); }
+    else renderGrid();
+    markPeriod(S.months);
+});
+$('#modeSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S.mode = b.dataset.mode;
+    $$('#modeSeg button').forEach(x => x.classList.toggle('on', x === b));
+    writeState(); refresh();
+});
+$('#measureSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S.measure = b.dataset.m;
+    $$('#measureSeg button').forEach(x => x.classList.toggle('on', x === b));
+    writeState(); refresh();
+});
+
+/** CSV prikazanog razdoblja (široki oblik, HR Excel: točka-zarez, decimalni zarez). */
+function exportVisible() {
+    const m = MEASURES[S.measure], ds = datasets();
+    let [from, to] = S.mode === 'cmp' ? currentRange() : [periodStart(extent(ds)), null];
+    const times = new Map();
+    ds.forEach((d, i) => d.data.forEach(([t, v]) => {
+        if (v === null) return;
+        if (from !== null && t < from) return;
+        if (to !== null && t > to) return;
+        if (!times.has(t)) times.set(t, new Array(ds.length).fill(''));
+        times.get(t)[i] = String(v).replace('.', ',');
+    }));
+    const header = ['datum_vrijeme', ...ds.map(d => `${d.p.device_name} [meter_id ${d.p.meter_id}] (${m.unit})`)];
+    const lines = [header.join(';'), ...[...times.keys()].sort((a, b) => a - b).map(t => [localIso(t), ...times.get(t)].join(';'))];
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `usporedba_${S.measure}_${new Date().toISOString().slice(0, 10)}.csv` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+if (window.matchMedia('(min-width: 768px)').matches) init();
+else window.matchMedia('(min-width: 768px)').addEventListener('change', e => { if (e.matches && !S.piezos.length) init(); });
+</script>
+</body>
+</html>
